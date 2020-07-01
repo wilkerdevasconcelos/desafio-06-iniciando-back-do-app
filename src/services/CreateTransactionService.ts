@@ -1,10 +1,10 @@
-import { getCustomRepository } from 'typeorm';
-import AppError from '../errors/AppError';
-
+import { getCustomRepository, getRepository } from 'typeorm';
 import Transaction from '../models/Transaction';
 import TransactionsRepository from '../repositories/TransactionsRepository';
+import Category from '../models/Category';
+import AppError from '../errors/AppError';
 
-interface Request {
+interface RequestDTO {
   title: string;
   value: number;
   type: 'income' | 'outcome';
@@ -12,28 +12,58 @@ interface Request {
 }
 
 class CreateTransactionService {
-  public async execute(data: Request): Promise<Transaction> {
-    const { title, value, type, category } = data;
+  public async execute({
+    title,
+    value,
+    type,
+    category,
+  }: RequestDTO): Promise<Transaction> {
+    const transactionsRepository = getCustomRepository(TransactionsRepository);
 
-    const transactionRepository = getCustomRepository(TransactionsRepository);
+    if (type !== 'income' && type !== 'outcome') {
+      throw new AppError('You can create only "income" or "outcome" types.');
+    }
 
-    const balance = await transactionRepository.getBalance();
+    const balance = await transactionsRepository.getBalance();
+    const { total } = balance;
 
-    if (type === 'outcome' && value > balance.total) {
+    if (type === 'outcome' && value > total) {
       throw new AppError(
-        'You do not have enough balance for this transaction',
-        400,
+        'You cant create an outcome transaction which leaves you negatives.',
       );
     }
 
-    const transaction = await transactionRepository.createWithCagetory({
+    const category_id = await this.checkCategory(category);
+
+    const transaction = transactionsRepository.create({
       title,
       value,
       type,
-      category,
+      category_id,
     });
 
+    await transactionsRepository.save(transaction);
+
     return transaction;
+  }
+
+  private async checkCategory(category_name: string): Promise<string> {
+    const categoriesRepository = getRepository(Category);
+
+    const checkCategory = await categoriesRepository.findOne({
+      where: { title: category_name },
+    });
+
+    if (!checkCategory) {
+      const category = categoriesRepository.create({
+        title: category_name,
+      });
+
+      await categoriesRepository.save(category);
+      return category.id;
+    }
+
+    return checkCategory.id;
   }
 }
 

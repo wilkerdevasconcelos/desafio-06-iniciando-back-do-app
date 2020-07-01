@@ -1,6 +1,4 @@
 import { EntityRepository, Repository, getCustomRepository } from 'typeorm';
-
-import CategoriesRepository from './CategoriesRepository';
 import Transaction from '../models/Transaction';
 
 interface Balance {
@@ -9,73 +7,53 @@ interface Balance {
   total: number;
 }
 
-interface CreateManyTransactionsDTO {
+interface CategoryDTO {
+  id: string;
   title: string;
-  value: number;
-  type: 'income' | 'outcome';
-  category: string;
 }
 
-interface CreateWithCaterogyDTO {
+interface CreateTransactionDTO {
+  id: string;
   title: string;
   value: number;
   type: 'income' | 'outcome';
-  category: string;
+  category: CategoryDTO;
 }
 
 @EntityRepository(Transaction)
 class TransactionsRepository extends Repository<Transaction> {
   public async getBalance(): Promise<Balance> {
-    const transactions = await this.find();
+    const transactionsRepository = getCustomRepository(TransactionsRepository);
+    const transactions = await transactionsRepository.find();
+    const income = transactions.reduce((total, transaction) => {
+      if (transaction.type === 'income') {
+        return total + Number(transaction.value);
+      }
+      return total;
+    }, 0);
 
-    const balance = transactions.reduce(
-      (lastBalance, transaction) => {
-        const { type, value } = transaction;
-        if (type === 'income') {
-          return {
-            ...lastBalance,
-            income: lastBalance.income + value,
-          };
-        }
-        return {
-          ...lastBalance,
-          outcome: lastBalance.outcome + value,
-        };
-      },
-      {
-        income: 0,
-        outcome: 0,
-        total: 0,
-      },
-    );
-
-    return {
-      ...balance,
-      total: balance.income - balance.outcome,
+    const outcome = transactions.reduce((total, transaction) => {
+      if (transaction.type === 'outcome') {
+        return total + Number(transaction.value);
+      }
+      return total;
+    }, 0);
+    const balance = {
+      income,
+      outcome,
+      total: income - outcome,
     };
+
+    return balance;
   }
 
-  public async createWithCagetory(
-    data: CreateWithCaterogyDTO,
-  ): Promise<Transaction> {
-    const { category, title, type, value } = data;
-
-    const categoriesRepository = getCustomRepository(CategoriesRepository);
-
-    const createdCategory = await categoriesRepository.findOrCreate(category);
-
-    const transaction = this.create({
-      title,
-      value,
-      type,
-      category_id: createdCategory.id,
+  public async getTransactions(): Promise<CreateTransactionDTO[]> {
+    const transactionsRepository = getCustomRepository(TransactionsRepository);
+    const transactions = transactionsRepository.find({
+      select: ['id', 'title', 'value', 'type'],
+      relations: ['category'],
     });
-
-    await this.save(transaction);
-
-    transaction.category = createdCategory;
-
-    return transaction;
+    return transactions;
   }
 }
 

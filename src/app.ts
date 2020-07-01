@@ -2,7 +2,6 @@ import 'reflect-metadata';
 import 'dotenv/config';
 
 import express, { Request, Response, NextFunction } from 'express';
-import cors from 'cors';
 import 'express-async-errors';
 
 import routes from './routes';
@@ -14,7 +13,6 @@ createConnection();
 const app = express();
 
 app.use(express.json());
-app.use(cors());
 app.use(routes);
 
 app.use((err: Error, request: Request, response: Response, _: NextFunction) => {
@@ -29,7 +27,7 @@ app.use((err: Error, request: Request, response: Response, _: NextFunction) => {
 
   return response.status(500).json({
     status: 'error',
-    error: 'Internal server error',
+    message: 'Internal server error',
   });
 });
 
