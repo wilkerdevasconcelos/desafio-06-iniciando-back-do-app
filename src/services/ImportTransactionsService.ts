@@ -1,38 +1,74 @@
 import fs from 'fs';
-import AppError from '../errors/AppError';
+import csvparse from 'csv-parse';
+import { getCustomRepository } from 'typeorm';
+import Transaction from '../models/Transaction';
+import TransactionsRepository from '../repositories/TransactionsRepository';
 
-interface ResponseDTO {
+interface Request {
+  path: string;
+  filename: string;
+}
+
+interface CreateManyTransactionsDTO {
   title: string;
-  type: 'income' | 'outcome';
   value: number;
+  type: 'income' | 'outcome';
   category: string;
 }
 
 class ImportTransactionsService {
-  async execute(path: string): Promise<ResponseDTO[]> {
-    // TODO
+  async execute(data: Request): Promise<Transaction[]> {
+    const { path } = data;
 
-    const fileExists = await fs.promises.stat(path);
-    if (!fileExists) {
-      throw new AppError('File does not exists!');
+    const transactionRepository = getCustomRepository(TransactionsRepository);
+
+    const arrayJsonTransactions: CreateManyTransactionsDTO[] = await this.convertCSVtoJSON(
+      path,
+    );
+
+    const transactions: Transaction[] = [] as Transaction[];
+
+    for (let i = 0; i < arrayJsonTransactions.length; i++) {
+      const transaction = await transactionRepository.createWithCagetory(
+        arrayJsonTransactions[i],
+      );
+      transactions.push(transaction);
     }
-    const Response: ResponseDTO[] = [];
-    const file = fs.readFileSync(path, 'utf-8');
-    const fileLine = file.split('\n');
-    const linesData = fileLine.splice(1, fileLine.length - 2);
-    linesData.map(line => {
-      const newData = line.split(', ');
-      const transaction: ResponseDTO = {
-        title: newData[0],
-        type: newData[1] === 'income' ? 'income' : 'outcome',
-        value: Number(newData[2]),
-        category: newData[3],
-      };
-      Response.push(transaction);
-      return true;
+
+    return transactions;
+  }
+
+  async convertCSVtoJSON(
+    csvPath: string,
+  ): Promise<CreateManyTransactionsDTO[]> {
+    const csv = await new Promise<Array<string[]>>(resolve => {
+      const listLineCsv: Array<string[]> = [];
+      fs.createReadStream(csvPath)
+        .pipe(csvparse())
+        .on('data', row => {
+          listLineCsv.push(row);
+        })
+        .on('end', () => {
+          resolve(listLineCsv);
+        });
     });
 
-    return Response;
+    const result: CreateManyTransactionsDTO[] = [];
+
+    const headers: string[] = csv[0].map(t => t.trim());
+
+    for (let i = 1; i < csv.length; i++) {
+      const currentline = csv[i];
+
+      const transaction: CreateManyTransactionsDTO = Object.assign(
+        {},
+        ...headers.map((k, idx) => ({ [k]: currentline[idx].trim() })),
+      );
+
+      result.push(transaction);
+    }
+
+    return result;
   }
 }
 

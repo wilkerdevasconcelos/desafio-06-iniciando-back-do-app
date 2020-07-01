@@ -1,22 +1,18 @@
-import { getCustomRepository } from 'typeorm';
+import { getRepository } from 'typeorm';
 import AppError from '../errors/AppError';
-import TransactionsRepository from '../repositories/TransactionsRepository';
-
-interface RequestDTO {
-  id: string;
-}
+import Transaction from '../models/Transaction';
 
 class DeleteTransactionService {
-  public async execute({ id }: RequestDTO): Promise<void> {
-    // TODO
-    const transactionsRepository = getCustomRepository(TransactionsRepository);
-    const findTransaction = await transactionsRepository.findOne({ id });
+  public async execute(id: string): Promise<void> {
+    const transactionRepository = getRepository(Transaction);
 
-    if (!findTransaction) {
-      throw new AppError('No transaction found with this ID.');
+    const transationIsExists = await transactionRepository.findOne(id);
+
+    if (!transationIsExists) {
+      throw new AppError('Transation is not exists!', 404);
     }
 
-    await transactionsRepository.delete({ id });
+    transactionRepository.delete(transationIsExists);
   }
 }
 

@@ -1,10 +1,10 @@
-import { getCustomRepository, getRepository } from 'typeorm';
-import Transaction from '../models/Transaction';
-import TransactionsRepository from '../repositories/TransactionsRepository';
-import Category from '../models/Category';
+import { getCustomRepository } from 'typeorm';
 import AppError from '../errors/AppError';
 
-interface RequestDTO {
+import Transaction from '../models/Transaction';
+import TransactionsRepository from '../repositories/TransactionsRepository';
+
+interface Request {
   title: string;
   value: number;
   type: 'income' | 'outcome';
@@ -12,58 +12,28 @@ interface RequestDTO {
 }
 
 class CreateTransactionService {
-  public async execute({
-    title,
-    value,
-    type,
-    category,
-  }: RequestDTO): Promise<Transaction> {
-    const transactionsRepository = getCustomRepository(TransactionsRepository);
+  public async execute(data: Request): Promise<Transaction> {
+    const { title, value, type, category } = data;
 
-    if (type !== 'income' && type !== 'outcome') {
-      throw new AppError('You can create only "income" or "outcome" types.');
-    }
+    const transactionRepository = getCustomRepository(TransactionsRepository);
 
-    const balance = await transactionsRepository.getBalance();
-    const { total } = balance;
+    const balance = await transactionRepository.getBalance();
 
-    if (type === 'outcome' && value > total) {
+    if (type === 'outcome' && value > balance.total) {
       throw new AppError(
-        'You cant create an outcome transaction which leaves you negatives.',
+        'You do not have enough balance for this transaction',
+        400,
       );
     }
 
-    const category_id = await this.checkCategory(category);
-
-    const transaction = transactionsRepository.create({
+    const transaction = await transactionRepository.createWithCagetory({
       title,
       value,
       type,
-      category_id,
+      category,
     });
-
-    await transactionsRepository.save(transaction);
 
     return transaction;
-  }
-
-  private async checkCategory(category_name: string): Promise<string> {
-    const categoriesRepository = getRepository(Category);
-
-    const checkCategory = await categoriesRepository.findOne({
-      where: { title: category_name },
-    });
-
-    if (!checkCategory) {
-      const category = categoriesRepository.create({
-        title: category_name,
-      });
-
-      await categoriesRepository.save(category);
-      return category.id;
-    }
-
-    return checkCategory.id;
   }
 }
 
