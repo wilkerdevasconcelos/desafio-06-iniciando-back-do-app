@@ -1,74 +1,87 @@
+import { getCustomRepository, getRepository, In } from 'typeorm';
+
+import csvParse from 'csv-parse';
 import fs from 'fs';
-import csvparse from 'csv-parse';
-import { getCustomRepository } from 'typeorm';
 import Transaction from '../models/Transaction';
-import TransactionsRepository from '../repositories/TransactionsRepository';
+import Category from '../models/Category';
 
-interface Request {
-  path: string;
-  filename: string;
-}
+import TransactionRepository from '../repositories/TransactionsRepository';
 
-interface CreateManyTransactionsDTO {
+interface CSVTransation {
   title: string;
-  value: number;
   type: 'income' | 'outcome';
+  value: number;
   category: string;
 }
 
 class ImportTransactionsService {
-  async execute(data: Request): Promise<Transaction[]> {
-    const { path } = data;
+  async execute(filePath: string): Promise<Transaction[]> {
+    const contactsReadStream = fs.createReadStream(filePath);
 
-    const transactionRepository = getCustomRepository(TransactionsRepository);
+    const transactionRepository = getCustomRepository(TransactionRepository);
+    const categoriesRepository = getRepository(Category);
 
-    const arrayJsonTransactions: CreateManyTransactionsDTO[] = await this.convertCSVtoJSON(
-      path,
-    );
-
-    const transactions: Transaction[] = [] as Transaction[];
-
-    for (let i = 0; i < arrayJsonTransactions.length; i++) {
-      const transaction = await transactionRepository.createWithCagetory(
-        arrayJsonTransactions[i],
-      );
-      transactions.push(transaction);
-    }
-
-    return transactions;
-  }
-
-  async convertCSVtoJSON(
-    csvPath: string,
-  ): Promise<CreateManyTransactionsDTO[]> {
-    const csv = await new Promise<Array<string[]>>(resolve => {
-      const listLineCsv: Array<string[]> = [];
-      fs.createReadStream(csvPath)
-        .pipe(csvparse())
-        .on('data', row => {
-          listLineCsv.push(row);
-        })
-        .on('end', () => {
-          resolve(listLineCsv);
-        });
+    const parsers = csvParse({
+      from_line: 2,
     });
 
-    const result: CreateManyTransactionsDTO[] = [];
+    const parseCSV = contactsReadStream.pipe(parsers);
 
-    const headers: string[] = csv[0].map(t => t.trim());
+    const transactions: CSVTransation[] = [];
+    const categories: string[] = [];
 
-    for (let i = 1; i < csv.length; i++) {
-      const currentline = csv[i];
-
-      const transaction: CreateManyTransactionsDTO = Object.assign(
-        {},
-        ...headers.map((k, idx) => ({ [k]: currentline[idx].trim() })),
+    parseCSV.on('data', async line => {
+      const [title, type, value, category] = line.map((cell: string) =>
+        cell.trim(),
       );
 
-      result.push(transaction);
-    }
+      if (!title || !type || !value) return;
 
-    return result;
+      categories.push(category);
+      transactions.push({ title, type, value, category });
+    });
+
+    await new Promise(resolve => parseCSV.on('end', resolve));
+
+    const existentCategories = await categoriesRepository.find({
+      where: {
+        title: In(categories),
+      },
+    });
+    const existentCategoriesTitle = existentCategories.map(
+      (category: Category) => category.title,
+    );
+
+    const addCategoryTitles = categories
+      .filter(category => !existentCategoriesTitle.includes(category))
+      .filter((value, index, self) => self.indexOf(value) === index);
+
+    const newCategories = categoriesRepository.create(
+      addCategoryTitles.map(title => ({
+        title,
+      })),
+    );
+
+    await categoriesRepository.save(newCategories);
+
+    const finalCategories = [...newCategories, ...existentCategories];
+
+    const createdTransactions = transactionRepository.create(
+      transactions.map(transaction => ({
+        title: transaction.title,
+        type: transaction.type,
+        value: transaction.value,
+        category: finalCategories.find(
+          category => category.title === transaction.category,
+        ),
+      })),
+    );
+
+    await transactionRepository.save(createdTransactions);
+
+    await fs.promises.unlink(filePath);
+
+    return createdTransactions;
   }
 }
 

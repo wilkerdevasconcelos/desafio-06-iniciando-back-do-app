@@ -16,14 +16,14 @@ class Category {
   @Column()
   title: string;
 
-  @OneToMany(() => Transaction, transaction => transaction.category)
-  transaction: Transaction;
-
   @CreateDateColumn()
   created_at: Date;
 
   @UpdateDateColumn()
   updated_at: Date;
+
+  @OneToMany(() => Transaction, transaction => transaction.category)
+  transaction: Transaction;
 }
 
 export default Category;
