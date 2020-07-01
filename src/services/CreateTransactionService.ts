@@ -1,16 +1,19 @@
-import { getCustomRepository, getRepository } from 'typeorm';
+import { getRepository, getCustomRepository } from 'typeorm';
+
 import AppError from '../errors/AppError';
 
-import TransactionRepository from '../repositories/TransactionsRepository';
+import TransactionsRepository from '../repositories/TransactionsRepository';
+
 import Transaction from '../models/Transaction';
 import Category from '../models/Category';
 
 interface Request {
   title: string;
-  type: 'income' | 'outcome';
   value: number;
+  type: string;
   category: string;
 }
+
 class CreateTransactionService {
   public async execute({
     title,
@@ -18,36 +21,30 @@ class CreateTransactionService {
     type,
     category,
   }: Request): Promise<Transaction> {
-    const transactionRepository = getCustomRepository(TransactionRepository);
     const categoryRepository = getRepository(Category);
+    const transactionRepository = getCustomRepository(TransactionsRepository);
 
     const { total } = await transactionRepository.getBalance();
 
-    if (type === 'outcome' && total < value) {
-      throw new AppError('You do not have enough balance');
+    if (type === 'outcome' && value > total) {
+      throw new AppError('Insufficient Fund');
     }
 
-    // Existe ? busca e usa o id retornado
-    let transactionCategory = await categoryRepository.findOne({
-      where: {
-        title: category,
-      },
+    let categoryFind = await categoryRepository.findOne({
+      where: { title: category },
     });
 
-    // Não existe? ? Cria
-    if (!transactionCategory) {
-      transactionCategory = categoryRepository.create({
-        title: category,
-      });
+    if (!categoryFind) {
+      categoryFind = categoryRepository.create({ title: category });
 
-      await categoryRepository.save(transactionCategory);
+      await categoryRepository.save(categoryFind);
     }
 
     const transaction = transactionRepository.create({
       title,
       value,
       type,
-      category: transactionCategory,
+      category_id: categoryFind.id,
     });
 
     await transactionRepository.save(transaction);
