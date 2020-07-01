@@ -2,11 +2,17 @@ import {
   Entity,
   Column,
   PrimaryGeneratedColumn,
-  ManyToOne,
-  JoinColumn,
   CreateDateColumn,
   UpdateDateColumn,
+  ManyToOne,
+  JoinColumn,
 } from 'typeorm';
+
+// 1 - Usuario -> n - Agendamentos
+// 1 - agendamento -> 1 - usuário
+
+// 1 - categoria -> n - transacoes // faz o inverso
+// 1 - transaçao -> 1 - categoria
 
 import Category from './Category';
 
@@ -21,15 +27,15 @@ class Transaction {
   @Column()
   type: 'income' | 'outcome';
 
-  @Column('decimal')
+  @Column()
   value: number;
+
+  @Column()
+  category_id: string;
 
   @ManyToOne(() => Category, category => category.transaction, { eager: true })
   @JoinColumn({ name: 'category_id' })
   category: Category;
-
-  @Column('uuid')
-  category_id: string;
 
   @CreateDateColumn()
   created_at: Date;
